@@ -107,7 +107,7 @@ func wgTurnOn(settings *C.char, tunFd int32) int32 {
 		return -1
 	}
 	logger.Verbosef("Attaching to interface")
-	dev := device.NewDevice(tun, conn.NewStdNetBind(), logger)
+	dev := device.NewDevice(tun, conn.CreateStdNetBind("tcp"), logger)
 
 	err = dev.IpcSet(C.GoString(settings))
 	if err != nil {
