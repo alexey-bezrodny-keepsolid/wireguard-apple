@@ -56,6 +56,12 @@ public class WireGuardAdapter {
     /// Adapter state.
     private var state: State = .stopped
 
+    private var socketType: String = "udp" {
+        didSet {
+            self.logHandler(.verbose, "New socketType value: \(socketType)")
+        }
+    }
+
     /// Tunnel device file descriptor.
     private var tunnelFileDescriptor: Int32? {
         var ctlInfo = ctl_info()
@@ -174,12 +180,14 @@ public class WireGuardAdapter {
     /// - Parameters:
     ///   - tunnelConfiguration: tunnel configuration.
     ///   - completionHandler: completion handler.
-    public func start(tunnelConfiguration: TunnelConfiguration, completionHandler: @escaping (WireGuardAdapterError?) -> Void) {
+    public func start(tunnelConfiguration: TunnelConfiguration, socketType: String, completionHandler: @escaping (WireGuardAdapterError?) -> Void) {
         workQueue.async {
             guard case .stopped = self.state else {
                 completionHandler(.invalidState)
                 return
             }
+
+            self.socketType = socketType
 
             let networkMonitor = NWPathMonitor()
             networkMonitor.pathUpdateHandler = { [weak self] path in
@@ -373,7 +381,7 @@ public class WireGuardAdapter {
             throw WireGuardAdapterError.cannotLocateTunnelFileDescriptor
         }
 
-        let handle = wgTurnOn(wgConfig, tunnelFileDescriptor)
+        let handle = wgTurnOn(wgConfig, tunnelFileDescriptor, socketType)
         if handle < 0 {
             throw WireGuardAdapterError.startWireGuardBackend(handle)
         }

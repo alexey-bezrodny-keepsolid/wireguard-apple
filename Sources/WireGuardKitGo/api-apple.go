@@ -83,7 +83,7 @@ func wgSetLogger(context, loggerFn uintptr) {
 }
 
 //export wgTurnOn
-func wgTurnOn(settings *C.char, tunFd int32) int32 {
+func wgTurnOn(settings *C.char, tunFd int32, socketType *C.char) int32 {
 	logger := &device.Logger{
 		Verbosef: CLogger(0).Printf,
 		Errorf:   CLogger(1).Printf,
@@ -107,7 +107,7 @@ func wgTurnOn(settings *C.char, tunFd int32) int32 {
 		return -1
 	}
 	logger.Verbosef("Attaching to interface")
-	dev := device.NewDevice(tun, conn.CreateStdNetBind("tcp"), logger)
+	dev := device.NewDevice(tun, conn.CreateStdNetBind(C.GoString(socketType)), logger)
 
 	err = dev.IpcSet(C.GoString(settings))
 	if err != nil {
