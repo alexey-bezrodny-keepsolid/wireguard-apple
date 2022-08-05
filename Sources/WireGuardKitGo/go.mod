@@ -13,4 +13,4 @@ require (
 	golang.org/x/net v0.0.0-20211020060615-d418f374d309 // indirect
 )
 
-replace golang.zx2c4.com/wireguard => gitlab.protontech.ch/ProtonVPN/development/wireguard-go.git v0.0.0-20220408135504-88e63bcf14c9
+replace golang.zx2c4.com/wireguard => gitlab.protontech.ch/ProtonVPN/development/wireguard-go.git v0.0.0-20220803111146-beeb272c8380
