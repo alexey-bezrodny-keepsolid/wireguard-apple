@@ -293,6 +293,15 @@ public class WireGuardAdapter {
         }
     }
 
+    public func update(networkReachability: Bool) {
+        switch self.state {
+            case .started(let handle, _):
+                wgSetNetworkAvailable(handle, networkReachability ? 1 : 0)
+            default:
+                break
+        }
+    }
+
     // MARK: - Private methods
 
     /// Setup WireGuard log handler.
