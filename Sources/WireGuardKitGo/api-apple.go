@@ -52,6 +52,7 @@ func (l CLogger) Printf(format string, args ...interface{}) {
 }
 
 type tunnelHandle struct {
+	*device.WireGuardStateManager
 	*device.Device
 	*device.Logger
 }
@@ -82,12 +83,24 @@ func wgSetLogger(context, loggerFn uintptr) {
 	loggerFunc = unsafe.Pointer(loggerFn)
 }
 
+//export wgSetNetworkAvailable
+func wgSetNetworkAvailable(tunnelHandle int32, available int) int {
+	handle, ok := tunnelHandles[tunnelHandle]
+	if !ok {
+		return -1
+	}
+	handle.WireGuardStateManager.SetNetworkAvailable(available != 0)
+	return 0
+}
+
 //export wgTurnOn
 func wgTurnOn(settings *C.char, tunFd int32, socketType *C.char) int32 {
-	logger := &device.Logger{
+	connLogger := conn.Logger{
 		Verbosef: CLogger(0).Printf,
 		Errorf:   CLogger(1).Printf,
 	}
+	logger := &device.Logger{connLogger}
+
 	dupTunFd, err := unix.Dup(int(tunFd))
 	if err != nil {
 		logger.Errorf("Unable to dup tun fd: %v", err)
@@ -107,7 +120,16 @@ func wgTurnOn(settings *C.char, tunFd int32, socketType *C.char) int32 {
 		return -1
 	}
 	logger.Verbosef("Attaching to interface")
-	dev := device.NewDevice(tun, conn.CreateStdNetBind(C.GoString(socketType)), logger)
+
+	socketTypeGoString := C.GoString(socketType)
+
+	manager := device.NewWireGuardStateManager(logger, socketTypeGoString)
+	dev := device.NewDevice(tun,
+		conn.CreateStdNetBind(socketTypeGoString,
+					&connLogger,
+					manager.SocketErrChan),
+		logger,
+		manager.HandshakeStateChan)
 
 	err = dev.IpcSet(C.GoString(settings))
 	if err != nil {
@@ -129,18 +151,20 @@ func wgTurnOn(settings *C.char, tunFd int32, socketType *C.char) int32 {
 		unix.Close(dupTunFd)
 		return -1
 	}
-	tunnelHandles[i] = tunnelHandle{dev, logger}
+	manager.Start(dev)
+	tunnelHandles[i] = tunnelHandle{manager, dev, logger}
 	return i
 }
 
 //export wgTurnOff
-func wgTurnOff(tunnelHandle int32) {
-	dev, ok := tunnelHandles[tunnelHandle]
+func wgTurnOff(handleDescriptor int32) {
+	handle, ok := tunnelHandles[handleDescriptor]
 	if !ok {
 		return
 	}
-	delete(tunnelHandles, tunnelHandle)
-	dev.Close()
+	delete(tunnelHandles, handleDescriptor)
+	handle.Device.Close()
+	handle.WireGuardStateManager.Close()
 }
 
 //export wgSetConfig
@@ -171,6 +195,15 @@ func wgGetConfig(tunnelHandle int32) *C.char {
 		return nil
 	}
 	return C.CString(settings)
+}
+
+//export wgGetState
+func wgGetState(tunnelHandle int32) int {
+	handle, ok := tunnelHandles[tunnelHandle]
+	if !ok {
+		return -1
+	}
+	return int(handle.WireGuardStateManager.GetState())
 }
 
 //export wgBumpSockets
