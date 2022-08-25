@@ -26,6 +26,29 @@ public enum WireGuardAdapterError: Error {
     case startWireGuardBackend(Int32)
 }
 
+private enum WireGuardGoState: Int32, CustomStringConvertible {
+    case disabled = 0
+    case connecting
+    case connected
+    case error
+    case waitingForNetwork
+
+    var description: String {
+        switch self {
+            case .disabled:
+                return "Disabled"
+            case .connecting:
+                return "Connecting"
+            case .connected:
+                return "Connected"
+            case .error:
+                return "Error"
+            case .waitingForNetwork:
+                return "Waiting For Network"
+        }
+    }
+}
+
 /// Enum representing internal state of the `WireGuardAdapter`
 private enum State {
     /// The tunnel is stopped
@@ -35,7 +58,25 @@ private enum State {
     case started(_ handle: Int32, _ settingsGenerator: PacketTunnelSettingsGenerator)
 
     /// The tunnel is temporarily shutdown due to device going offline
-    case temporaryShutdown(_ settingsGenerator: PacketTunnelSettingsGenerator)
+    case temporaryShutdown(_ handle: Int32, _ settingsGenerator: PacketTunnelSettingsGenerator)
+
+    var handle: Int32? {
+        switch self {
+            case .stopped:
+                return nil
+            case let .temporaryShutdown(handle, _), let .started(handle, _):
+                return handle
+        }
+    }
+
+    var settingsGenerator: PacketTunnelSettingsGenerator? { 
+        switch self {
+            case .stopped:
+                return nil
+            case let .temporaryShutdown(_, settingsGenerator), let .started(_, settingsGenerator):
+                return settingsGenerator
+        }
+    }
 }
 
 public class WireGuardAdapter {
@@ -52,6 +93,9 @@ public class WireGuardAdapter {
 
     /// Private queue used to synchronize access to `WireGuardAdapter` members.
     private let workQueue = DispatchQueue(label: "WireGuardAdapterWorkQueue")
+
+    /// Private queue used for observing state changes by the backend.
+    private let stateChangeQueue = DispatchQueue(label: "WireGuardAdapterStateChangeQueue")
 
     /// Adapter state.
     private var state: State = .stopped
@@ -176,6 +220,48 @@ public class WireGuardAdapter {
         }
     }
 
+    public func observeStateChanges() {
+        stateChangeQueue.async { [weak self] in
+            guard let `self` = self else { return }
+
+            var previousState: WireGuardGoState? = nil
+            while let handle = self.state.handle,
+                  let settingsGenerator = self.state.settingsGenerator,
+                  // `wgGetState(_:)` is a blocking call, and will only unblock when the state changes.
+                  let goState = WireGuardGoState(rawValue: wgGetState(handle)) {
+
+                self.logHandler(.verbose, "WireGuardKitGo state change \(previousState?.description ?? "(nil)") --> \(goState.description)")
+                previousState = goState
+
+                if case .error = goState, case .started = self.state {
+                    guard self.networkMonitor?.currentPath.status.isSatisfiable == true else {
+                        // If the current network path isn't satisfiable and we've received an error, the likely culprit
+                        // is due to the unavailability of the network. We'll restart the tunnel when the path becomes
+                        // available again.
+                        wgSetNetworkAvailable(handle, 0)
+                        self.state = .temporaryShutdown(handle, settingsGenerator)
+                        continue
+                    }
+
+                    let (wgConfig, resolutionResults) = settingsGenerator.uapiConfiguration()
+                    self.logEndpointResolutionResults(resolutionResults)
+
+                    do {
+                        // If we're in an error state and the network is in fact satisfiable, then go ahead and try to
+                        // restart the backend.
+                        self.state = .started(
+                            try self.startWireGuardBackend(wgConfig: wgConfig),
+                            settingsGenerator
+                        )
+                    } catch {
+                        self.logHandler(.verbose, "Could not restart tunnel after observing error state: \(error)")
+                    }
+                }
+            }
+            self.logHandler(.verbose, "Exiting state change observation loop.")
+        }
+    }
+
     /// Start the tunnel tunnel.
     /// - Parameters:
     ///   - tunnelConfiguration: tunnel configuration.
@@ -206,6 +292,7 @@ public class WireGuardAdapter {
                     try self.startWireGuardBackend(wgConfig: wgConfig),
                     settingsGenerator
                 )
+                self.observeStateChanges()
                 self.networkMonitor = networkMonitor
                 completionHandler(nil)
             } catch let error as WireGuardAdapterError {
@@ -277,8 +364,8 @@ public class WireGuardAdapter {
 
                     self.state = .started(handle, settingsGenerator)
 
-                case .temporaryShutdown:
-                    self.state = .temporaryShutdown(settingsGenerator)
+                case .temporaryShutdown(let handle, _):
+                    self.state = .temporaryShutdown(handle, settingsGenerator)
 
                 case .stopped:
                     fatalError()
@@ -290,15 +377,6 @@ public class WireGuardAdapter {
             } catch {
                 fatalError()
             }
-        }
-    }
-
-    public func update(networkReachability: Bool) {
-        switch self.state {
-            case .started(let handle, _):
-                wgSetNetworkAvailable(handle, networkReachability ? 1 : 0)
-            default:
-                break
         }
     }
 
@@ -433,11 +511,6 @@ public class WireGuardAdapter {
     private func didReceivePathUpdate(path: Network.NWPath) {
         self.logHandler(.verbose, "Network change detected with \(path.status) route and interface order \(path.availableInterfaces)")
 
-        #if os(macOS)
-        if case .started(let handle, _) = self.state {
-            wgBumpSockets(handle)
-        }
-        #elseif os(iOS)
         switch self.state {
         case .started(let handle, let settingsGenerator):
             if path.status.isSatisfiable {
@@ -445,41 +518,39 @@ public class WireGuardAdapter {
                 self.logEndpointResolutionResults(resolutionResults)
 
                 wgSetConfig(handle, wgConfig)
+
+                #if os(iOS)
                 wgDisableSomeRoamingForBrokenMobileSemantics(handle)
+                #endif
+
+                wgSetNetworkAvailable(handle, 1)
                 wgBumpSockets(handle)
             } else {
                 self.logHandler(.verbose, "Connectivity offline, pausing backend.")
 
-                self.state = .temporaryShutdown(settingsGenerator)
-                wgTurnOff(handle)
+                self.state = .temporaryShutdown(handle, settingsGenerator)
+                wgSetNetworkAvailable(handle, 0)
             }
 
-        case .temporaryShutdown(let settingsGenerator):
-            guard path.status.isSatisfiable else { return }
+        case let .temporaryShutdown(handle, settingsGenerator):
+            guard path.status.isSatisfiable else {
+                wgSetNetworkAvailable(handle, 0)
+                return
+            }
 
             self.logHandler(.verbose, "Connectivity online, resuming backend.")
 
-            do {
-                try self.setNetworkSettings(settingsGenerator.generateNetworkSettings())
+            wgSetNetworkAvailable(handle, 1)
 
-                let (wgConfig, resolutionResults) = settingsGenerator.uapiConfiguration()
-                self.logEndpointResolutionResults(resolutionResults)
-
-                self.state = .started(
-                    try self.startWireGuardBackend(wgConfig: wgConfig),
-                    settingsGenerator
-                )
-            } catch {
-                self.logHandler(.error, "Failed to restart backend: \(error.localizedDescription)")
-            }
+            self.state = .started(
+                handle,
+                settingsGenerator
+            )
 
         case .stopped:
             // no-op
             break
         }
-        #else
-        #error("Unsupported")
-        #endif
     }
 }
 
