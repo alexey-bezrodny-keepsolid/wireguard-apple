@@ -230,7 +230,9 @@ public class WireGuardAdapter {
                   // `wgGetState(_:)` is a blocking call, and will only unblock when the state changes.
                   let goState = WireGuardGoState(rawValue: wgGetState(handle)) {
 
-                self.logHandler(.verbose, "WireGuardKitGo state change \(previousState?.description ?? "(nil)") --> \(goState.description)")
+                if previousState != goState {
+                    self.logHandler(.verbose, "WireGuardKitGo state change \(previousState?.description ?? "(nil)") --> \(goState.description)")
+                }
                 previousState = goState
 
                 if case .error = goState, case .started = self.state {
@@ -238,17 +240,20 @@ public class WireGuardAdapter {
                         // If the current network path isn't satisfiable and we've received an error, the likely culprit
                         // is due to the unavailability of the network. We'll restart the tunnel when the path becomes
                         // available again.
+                        self.logHandler(.verbose, "WireGuardKit: current path not satisfiable, shutting down backend")
                         wgSetNetworkAvailable(handle, 0)
                         self.state = .temporaryShutdown(handle, settingsGenerator)
                         continue
                     }
 
+                    // If we're in an error state and the network is in fact satisfiable, then go ahead and try to
+                    // restart the backend.
+                    self.logHandler(.verbose, "WireGuardKit: current path is satisfiable, restarting backend")
+                    wgTurnOff(handle)
                     let (wgConfig, resolutionResults) = settingsGenerator.uapiConfiguration()
                     self.logEndpointResolutionResults(resolutionResults)
 
                     do {
-                        // If we're in an error state and the network is in fact satisfiable, then go ahead and try to
-                        // restart the backend.
                         self.state = .started(
                             try self.startWireGuardBackend(wgConfig: wgConfig),
                             settingsGenerator
