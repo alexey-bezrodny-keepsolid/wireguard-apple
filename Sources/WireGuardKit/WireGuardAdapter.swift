@@ -9,37 +9,6 @@ import WireGuardKitGo
 import WireGuardKitC
 #endif
 
-private struct RetryCounter {
-    static let retryAttemptResetInterval: TimeInterval = 1 * 60 * 60 // 1 hour
-    static let retryAttemptResetJitter: UInt32 = 60 * 2 // 2 minutes
-    static let maxRetryAttempts = 60 // Allow on average 1 retry per minute
-
-    var numRetryAttemptsInInterval = 0
-    var retryAttemptsResetDate = Date().addingTimeInterval(Self.retryAttemptResetInterval)
-
-    private mutating func resetCounter() {
-        numRetryAttemptsInInterval = 0
-
-        let jitter = TimeInterval(UInt32.random(in: 0...Self.retryAttemptResetJitter))
-        retryAttemptsResetDate = Date().addingTimeInterval(Self.retryAttemptResetInterval + jitter)
-    }
-
-    mutating func shouldRetry() -> Bool {
-        defer { numRetryAttemptsInInterval += 1 }
-
-        guard Date() < retryAttemptsResetDate else {
-            resetCounter()
-            return true
-        }
-
-        guard numRetryAttemptsInInterval < Self.maxRetryAttempts else {
-            return false
-        }
-
-        return true
-    }
-}
-
 public enum WireGuardAdapterError: Error {
     /// Failure to locate tunnel file descriptor.
     case cannotLocateTunnelFileDescriptor
@@ -130,9 +99,6 @@ public class WireGuardAdapter {
 
     /// Adapter state.
     private var state: State = .stopped
-
-    /// Retry counter, used for rate limiting backend restarts during error conditions.
-    private var retryCounter = RetryCounter()
 
     private var socketType: String = "udp" {
         didSet {
@@ -268,39 +234,6 @@ public class WireGuardAdapter {
                     self.logHandler(.verbose, "WireGuardKitGo state change \(previousState?.description ?? "(nil)") --> \(goState.description)")
                 }
                 previousState = goState
-
-                if case .error = goState, case .started = self.state {
-                    guard self.networkMonitor?.currentPath.status.isSatisfiable == true else {
-                        // If the current network path isn't satisfiable and we've received an error, the likely culprit
-                        // is due to the unavailability of the network. We'll restart the tunnel when the path becomes
-                        // available again.
-                        self.logHandler(.verbose, "WireGuardKit: current path not satisfiable, shutting down backend")
-                        wgSetNetworkAvailable(handle, 0)
-                        self.state = .temporaryShutdown(handle, settingsGenerator)
-                        continue
-                    }
-
-                    guard self.retryCounter.shouldRetry() else {
-                        self.logHandler(.verbose, "Reached maximum number of retries in interval. Not restarting backend.")
-                        continue
-                    }
-
-                    // If we're in an error state and the network is in fact satisfiable, then go ahead and try to
-                    // restart the backend.
-                    self.logHandler(.verbose, "WireGuardKit: current path is satisfiable, restarting backend")
-                    wgTurnOff(handle)
-                    let (wgConfig, resolutionResults) = settingsGenerator.uapiConfiguration()
-                    self.logEndpointResolutionResults(resolutionResults)
-
-                    do {
-                        self.state = .started(
-                            try self.startWireGuardBackend(wgConfig: wgConfig),
-                            settingsGenerator
-                        )
-                    } catch {
-                        self.logHandler(.verbose, "Could not restart tunnel after observing error state: \(error)")
-                    }
-                }
             }
             self.logHandler(.verbose, "Exiting state change observation loop.")
         }
@@ -557,28 +490,29 @@ public class WireGuardAdapter {
 
         switch self.state {
         case .started(let handle, let settingsGenerator):
-            if path.status.isSatisfiable {
-                let (wgConfig, resolutionResults) = settingsGenerator.endpointUapiConfiguration()
-                self.logEndpointResolutionResults(resolutionResults)
-
-                wgSetConfig(handle, wgConfig)
-
-                #if os(iOS)
-                wgDisableSomeRoamingForBrokenMobileSemantics(handle)
-                #endif
-
-                wgSetNetworkAvailable(handle, 1)
-                wgBumpSockets(handle)
-            } else {
-                self.logHandler(.verbose, "Connectivity offline, pausing backend.")
+            guard path.status.isSatisfiable else {
+                self.logHandler(.verbose, "Connectivity offline, pausing backend. \(path.unsatisfiedReasonString)")
 
                 self.state = .temporaryShutdown(handle, settingsGenerator)
                 wgSetNetworkAvailable(handle, 0)
+                return
             }
+
+            let (wgConfig, resolutionResults) = settingsGenerator.endpointUapiConfiguration()
+            self.logEndpointResolutionResults(resolutionResults)
+
+            wgSetConfig(handle, wgConfig)
+
+            #if os(iOS)
+            wgDisableSomeRoamingForBrokenMobileSemantics(handle)
+            #endif
+
+            wgSetNetworkAvailable(handle, 1)
+            wgBumpSockets(handle)
 
         case let .temporaryShutdown(handle, settingsGenerator):
             guard path.status.isSatisfiable else {
-                wgSetNetworkAvailable(handle, 0)
+                self.logHandler(.verbose, "Connectivity still offline. \(path.unsatisfiedReasonString)")
                 return
             }
 
@@ -605,15 +539,23 @@ public enum WireGuardLogLevel: Int32 {
 }
 
 private extension Network.NWPath.Status {
-    /// Returns `true` if the path is potentially satisfiable.
+    /// Returns `true` if the path is satisfiable.
     var isSatisfiable: Bool {
         switch self {
-        case .requiresConnection, .satisfied:
+        case .satisfied:
             return true
-        case .unsatisfied:
+        case .unsatisfied, .requiresConnection:
             return false
         @unknown default:
             return true
         }
+    }
+}
+
+private extension Network.NWPath {
+    var unsatisfiedReasonString: String {
+        guard #available(iOS 14.2, macOS 11.0, *) else { return "" }
+
+        return "(\(unsatisfiedReason))"
     }
 }
