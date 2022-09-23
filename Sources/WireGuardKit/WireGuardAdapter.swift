@@ -9,6 +9,37 @@ import WireGuardKitGo
 import WireGuardKitC
 #endif
 
+private struct RetryCounter {
+    static let retryAttemptResetInterval: TimeInterval = 1 * 60 * 60 // 1 hour
+    static let retryAttemptResetJitter: UInt32 = 60 * 2 // 2 minutes
+    static let maxRetryAttempts = 60 // Allow on average 1 retry per minute
+
+    var numRetryAttemptsInInterval = 0
+    var retryAttemptsResetDate = Date().addingTimeInterval(Self.retryAttemptResetInterval)
+
+    private mutating func resetCounter() {
+        numRetryAttemptsInInterval = 0
+
+        let jitter = TimeInterval(UInt32.random(in: 0...Self.retryAttemptResetJitter))
+        retryAttemptsResetDate = Date().addingTimeInterval(Self.retryAttemptResetInterval + jitter)
+    }
+
+    mutating func shouldRetry() -> Bool {
+        defer { numRetryAttemptsInInterval += 1 }
+
+        guard Date() < retryAttemptsResetDate else {
+            resetCounter()
+            return true
+        }
+
+        guard numRetryAttemptsInInterval < Self.maxRetryAttempts else {
+            return false
+        }
+
+        return true
+    }
+}
+
 public enum WireGuardAdapterError: Error {
     /// Failure to locate tunnel file descriptor.
     case cannotLocateTunnelFileDescriptor
@@ -99,6 +130,9 @@ public class WireGuardAdapter {
 
     /// Adapter state.
     private var state: State = .stopped
+
+    /// Retry counter, used for rate limiting backend restarts during error conditions.
+    private var retryCounter = RetryCounter()
 
     private var socketType: String = "udp" {
         didSet {
@@ -243,6 +277,11 @@ public class WireGuardAdapter {
                         self.logHandler(.verbose, "WireGuardKit: current path not satisfiable, shutting down backend")
                         wgSetNetworkAvailable(handle, 0)
                         self.state = .temporaryShutdown(handle, settingsGenerator)
+                        continue
+                    }
+
+                    guard self.retryCounter.shouldRetry() else {
+                        self.logHandler(.verbose, "Reached maximum number of retries in interval. Not restarting backend.")
                         continue
                     }
 
