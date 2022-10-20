@@ -7,12 +7,20 @@ sync-wireguard-apple:
     refs:
       - /^release\/.*/
   before_script:
-    - apt update && apt-get install -y connect-proxy
-  script:
-    - git clone "$CI_REPOSITORY_URL" --branch "$CI_COMMIT_BRANCH" _APP_CLONE;
-    - cd _APP_CLONE
+    - ssh-add -D # Delete all ssh private keys
+    - echo "$GITHUB_SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
+    - ssh-add -l # Lists fingerprints of all identities currently represented by the agent
+    - ssh-keyscan -t rsa github.com > ~/.ssh/known_hosts
+    - git remote remove public || true
     - git remote add public git@github.com:ProtonVPN/wireguard-apple.git
+  script:
+    - git checkout -b "$CI_COMMIT_BRANCH"
     - git push public "$CI_COMMIT_BRANCH" -f
+  after_script:
+    - ssh-add -D # Delete all ssh private keys
+    - git remote remove public || true
+  tags:
+    - iOS-deploy
 
 sync-go:
   stage: publish
