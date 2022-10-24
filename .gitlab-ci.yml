@@ -1,0 +1,34 @@
+stages:
+  - publish
+
+sync-wireguard-apple:
+  stage: publish
+  only:
+    refs:
+      - /^release\/.*/
+  before_script:
+    - ssh-add -D # Delete all ssh private keys
+    - echo "$GITHUB_SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
+    - ssh-add -l # Lists fingerprints of all identities currently represented by the agent
+    - ssh-keyscan -t rsa github.com > ~/.ssh/known_hosts
+    - git remote remove public || true
+    - git remote add public git@github.com:ProtonVPN/wireguard-apple.git
+  script:
+    - git checkout -b "$CI_COMMIT_BRANCH"
+    - git push public "$CI_COMMIT_BRANCH" -f
+  after_script:
+    - ssh-add -D # Delete all ssh private keys
+    - git remote remove public || true
+  tags:
+    - iOS-deploy
+
+sync-go:
+  stage: publish
+  only:
+    refs:
+      - /^release\/.*/
+  variables:
+    OPENSOURCE_GO: "true"
+  trigger:
+    project: ProtonVPN/development/wireguard-go
+    branch: release/ios

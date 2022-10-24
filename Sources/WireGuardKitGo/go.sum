@@ -1,10 +1,10 @@
+github.com/ProtonVPN/wireguard-go v0.0.0-20221024052736-37b4a4b18ea9 h1:gW7yw7g7RtoYeog0kWCLj+YJ9ZUbn3gCnVVXlng2JxY=
+github.com/ProtonVPN/wireguard-go v0.0.0-20221024052736-37b4a4b18ea9/go.mod h1:kJ7wLaKfj6d2caO3f0lgpAcRGRbnOX/twRefwY4cGkM=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/protonjohn/wireguard-go v0.0.0-20220922133039-2a1e6b89b39d h1:Q79haWONmZgXR+jftMNaSRa+S4+r9yoP37jeDyfdpsQ=
-github.com/protonjohn/wireguard-go v0.0.0-20220922133039-2a1e6b89b39d/go.mod h1:kJ7wLaKfj6d2caO3f0lgpAcRGRbnOX/twRefwY4cGkM=
 github.com/refraction-networking/utls v1.0.0 h1:6XQHSjDmeBCF9sPq8p2zMVGq7Ud3rTD2q88Fw8Tz1tA=
 github.com/refraction-networking/utls v1.0.0/go.mod h1:tz9gX959MEFfFN5whTIocCLUG57WiILqtdVxI8c6Wj0=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
