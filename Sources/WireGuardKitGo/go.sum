@@ -1,3 +1,5 @@
+github.com/ProtonVPN/wireguard-go v0.0.0-20221111135109-143344a76f36 h1:jz0BksuiCNV7u4pC8xdygxyBZ1k0H1OP6TWuj4AB6io=
+github.com/ProtonVPN/wireguard-go v0.0.0-20221111135109-143344a76f36/go.mod h1:oHfBtX7RCL5bpOYyI0JBCRXL/1ESRq4nTFxqH+IXH1Y=
 github.com/andybalholm/brotli v1.0.4 h1:V7DdXeJtZscaqfNuAdSRuRFzuiKlHSC/Zh3zl9qY3JY=
 github.com/andybalholm/brotli v1.0.4/go.mod h1:fO7iG3H7G2nSZ7m0zPUDn85XEX2GTukHGRSepvi9Eig=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -14,8 +16,6 @@ github.com/stretchr/objx v0.4.0/go.mod h1:YvHI0jy2hoMjB+UWwv71VJQ9isScKT/TqJzVSS
 github.com/stretchr/testify v1.7.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.8.0 h1:pSgiaMZlXftHpm5L7V1+rVB+AZJydKsMxsQBIJw4PKk=
 github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO+kdMU+MU=
-github.com/ProtonVPN/wireguard-go v0.0.0-20221111115127-e61cbcc8936f h1:pocPyl64Aoa82B9HZr6kSrFA+VZrKSKHTOJTYIbVt+c=
-github.com/ProtonVPN/wireguard-go v0.0.0-20221111115127-e61cbcc8936f/go.mod h1:oHfBtX7RCL5bpOYyI0JBCRXL/1ESRq4nTFxqH+IXH1Y=
 golang.org/x/crypto v0.0.0-20220829220503-c86fa9a7ed90 h1:Y/gsMcFOcR+6S6f3YeMKl5g+dZMEWqcz5Czj/GWYbkM=
 golang.org/x/crypto v0.0.0-20220829220503-c86fa9a7ed90/go.mod h1:IxCIyHEi3zRg3s0A5j5BB6A9Jmi73HwBIUl50j+osU4=
 golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2/go.mod h1:9nx3DQGgdP8bBQD5qxJ1jj9UTztislL4KSBs9R2vV5Y=

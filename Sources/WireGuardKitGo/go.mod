@@ -7,4 +7,4 @@ require (
 	golang.zx2c4.com/wireguard v0.0.0-20210905140043-2ef39d47540c
 )
 
-replace golang.zx2c4.com/wireguard => github.com/ProtonVPN/wireguard-go v0.0.0-20221111115127-e61cbcc8936f
+replace golang.zx2c4.com/wireguard => github.com/ProtonVPN/wireguard-go v0.0.0-20221111135109-143344a76f36
