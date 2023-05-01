@@ -151,25 +151,16 @@ class PacketTunnelSettingsGenerator {
 
         for addressRange in tunnelConfiguration.interface.addresses {
             if addressRange.address is IPv4Address {
-                let route = NEIPv4Route(destinationAddress: "\(addressRange.maskedAddress())", subnetMask: "\(addressRange.subnetMask())")
+                let route = NEIPv4Route.default()
                 route.gatewayAddress = "\(addressRange.address)"
                 ipv4IncludedRoutes.append(route)
             } else if addressRange.address is IPv6Address {
-                let route = NEIPv6Route(destinationAddress: "\(addressRange.maskedAddress())", networkPrefixLength: NSNumber(value: addressRange.networkPrefixLength))
+                let route = NEIPv6Route.default()
                 route.gatewayAddress = "\(addressRange.address)"
                 ipv6IncludedRoutes.append(route)
             }
         }
 
-        for peer in tunnelConfiguration.peers {
-            for addressRange in peer.allowedIPs {
-                if addressRange.address is IPv4Address {
-                    ipv4IncludedRoutes.append(NEIPv4Route(destinationAddress: "\(addressRange.address)", subnetMask: "\(addressRange.subnetMask())"))
-                } else if addressRange.address is IPv6Address {
-                    ipv6IncludedRoutes.append(NEIPv6Route(destinationAddress: "\(addressRange.address)", networkPrefixLength: NSNumber(value: addressRange.networkPrefixLength)))
-                }
-            }
-        }
         return (ipv4IncludedRoutes, ipv6IncludedRoutes)
     }
 
